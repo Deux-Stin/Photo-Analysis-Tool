@@ -1,18 +1,23 @@
-from flask import Flask
-from app.routes_manager import RoutesManager  # Assurez-vous que ce nom est correct
-from dash_app import DashApp
-import generate_uml  # Importer le script de génération UML
+import sys
+from PyQt5.QtWidgets import QApplication
+from main_gui import MainWindow  # Assure-toi que ce nom correspond à ton fichier PyQt
+from scripts.database_manager import DatabaseManager  # Assure-toi que ce nom est correct
+from scripts.generate_uml import generate_uml
 
-def create_app():
-    app = Flask(__name__, template_folder='app/templates')  # Spécifiez le répertoire des templates
-    routes_manager = RoutesManager()
-    app.register_blueprint(routes_manager.main)
-    DashApp(app)  # Crée et configure l'application Dash
-    return app
+def initialize_database():
+    db_manager = DatabaseManager()  # Cela va créer la base de données si elle n'existe pas encore
+    
+def main():
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec_())
 
 if __name__ == '__main__':
-    generate_uml.generate_uml()  # Générer les diagrammes UML avant de démarrer l'application Flask
+    initialize_database()  # Initialise la base de données avant de lancer l'application PyQt
 
-    app = create_app()
-    app.run(debug=True)
+    print("Don't forget to turn on the uml generation for production.")
+    generate_uml()  # Générer les diagrammes UML avant de démarrer l'application Flask
 
+    print("Starting the PyQt application.")
+    main()

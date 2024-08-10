@@ -28,8 +28,7 @@ class DatabaseManager:
                 aperture REAL,
                 shutter_speed REAL,
                 hour_taken TEXT,
-                folder_path TEXT,
-                UNIQUE(filename, folder_path) -- Ajoute une contrainte UNIQUE sur filename et folder_path
+                folder_path TEXT
             )
         ''')
         
@@ -78,49 +77,54 @@ class DatabaseManager:
 
     def populate_database(self, directory, raw_extensions=None):
         if raw_extensions is None:
-            raw_extensions = self.raw_extensions  # Utiliser la liste par défaut
+            raw_extensions = self.raw_extensions
 
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
         processed_count = 0
 
+        directory = os.path.normpath(directory)
+
         for root, _, files in os.walk(directory):
+            root = os.path.normpath(root)
+            print(f"Analyzing directory: {root}")
+
             for file in files:
                 _, ext = os.path.splitext(file)
                 ext = ext.lower().strip('.')
-                
+                print(f"Found file: {file} with extension: {ext}")
+
                 if ext in raw_extensions:
-                    filepath = os.path.join(root, file)
+                    filepath = os.path.normpath(os.path.join(root, file))
+                    folder_path = os.path.relpath(root, directory)
+                    folder_path = os.path.normpath(folder_path)
 
-                    # Si root et directory sont identiques, folder_path doit être une chaîne vide ou explicite
-                    if root == directory:
-                        folder_path = directory  # ou '/' ou 'root' selon ce qui est plus logique pour toi
-                    else:
-                        folder_path = os.path.relpath(root, directory)  # Chemin relatif du dossier
+                    print(f"Processing file: {filepath}")
 
-                    # Vérifier si le fichier existe déjà dans la base de données en fonction du filename + folder_path
+                    # Vérifier l'existence basée sur filename ET folder_path
                     cursor.execute('SELECT 1 FROM photos WHERE filename = ? AND folder_path = ?', (file, folder_path))
-                    if cursor.fetchone() is None:
+                    result = cursor.fetchone()
+                    
+                    if result is None:
                         try:
                             photo_data = self.process_image(filepath)
+                            print(f"Inserting into database: {photo_data + (folder_path,)}")
                             cursor.execute('''
                                 INSERT INTO photos (filename, date_taken, location, focal_length, aperture, shutter_speed, hour_taken, folder_path)
                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                            ''', (*photo_data, folder_path))
+                            ''', photo_data + (folder_path,))
                             processed_count += 1
-                        except sqlite3.IntegrityError:
-                            print(f"File '{file}' already exists in the database with the same folder path. Skipping...")
+                        except sqlite3.IntegrityError as e:
+                            print(f"IntegrityError while inserting file {file}: {e}")
                         except Exception as e:
-                            print(f"Error processing file '{filepath}': {e}")
-                            # continue
-
+                            print(f"Unexpected error while inserting file {file}: {e}")
+                    else:
+                        print(f"File {file} in folder {folder_path} already exists in the database.")
 
         conn.commit()
         conn.close()
-
         print(f"Total files added to the database: {processed_count}")
-
 
 
     def get_photos_count(self):
@@ -157,11 +161,7 @@ class DatabaseManager:
                 cursor.execute("SELECT date_taken, hour_taken FROM photos")
             else:
                 cursor.execute("SELECT date_taken, hour_taken FROM photos WHERE folder_path = ?", (filter_text,))
-            
-            data = cursor.fetchall()
-            print(f"Data fetched with filter '{filter_text}': {data}")
-            return data
-
+            return cursor.fetchall()
 
     def get_statistics(self):
         with sqlite3.connect(self.db_path) as conn:
@@ -187,7 +187,7 @@ class DatabaseManager:
             avg_aperture = round(avg_aperture, 2) if avg_aperture != 'N/A' else 'N/A'
 
             cursor.execute('SELECT shutter_speed FROM photos WHERE shutter_speed IS NOT NULL')
-            shutter_speeds = [row[0] for row in cursor.fetchall()]
+            shutter_speeds = [row[0] for cursor in cursor.fetchall()]
             avg_shutter_speed = mean(shutter_speeds) if shutter_speeds else 'N/A'
             avg_shutter_speed = round(avg_shutter_speed, 2) if avg_shutter_speed != 'N/A' else 'N/A'
 

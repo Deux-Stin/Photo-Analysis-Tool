@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Statistics</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="text-center">Gallery Statistics</h1>
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th scope="col">Statistic</th>
+                    <th scope="col">Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Total Images</td>
+                    <td>{{ stats.total_images }}</td>
+                </tr>
+                <tr>
+                    <td>Average Focal Length [mm]</td>
+                    <td>{{ stats.avg_focal_length if stats.avg_focal_length != 'N/A' else 'N/A' }}</td>
+                </tr>
+                <tr>
+                    <td>Average Aperture [f.X]</td>
+                    <td>{{ stats.avg_aperture if stats.avg_aperture != 'N/A' else 'N/A' }}</td>
+                </tr>
+                <!-- <tr>
+                    <td>Average Shutter Speed [s]</td>
+                    <td>{{ stats.avg_shutter_speed if stats.avg_shutter_speed != 'N/A' else 'N/A' }}</td>
+                </tr> -->
+                <tr>
+                    <td>Average Shutter Speed [s]</td>
+                    <td>{{ stats.inverse_avg_shutter_speed if stats.inverse_avg_shutter_speed != 'N/A' else 'N/A' }}</td>
+                </tr>
+                <tr>
+                    <td>Earliest Date Taken</td>
+                    <td>{{ stats.earliest_date if stats.earliest_date != 'N/A' else 'N/A' }}</td>
+                </tr>
+                <tr>
+                    <td>Latest Date Taken</td>
+                    <td>{{ stats.latest_date if stats.latest_date != 'N/A' else 'N/A' }}</td>
+                </tr>
+                <!-- Ajoutez d'autres statistiques selon vos besoins -->
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

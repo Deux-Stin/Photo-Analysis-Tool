@@ -2,3 +2,7 @@
 _A faire au lancement.txt
 notes.txt
 structure_projet.txt
+
+# Exclure les environnements virtuels
+venv/
+.venv/

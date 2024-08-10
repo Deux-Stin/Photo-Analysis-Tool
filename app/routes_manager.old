@@ -20,7 +20,7 @@ class RoutesManager:
         @self.main.route('/photos', methods=['GET'])
         def get_photos():
             try:
-                conn = sqlite3.connect('data/photos.db')
+                conn = sqlite3.connect(self.db_manager.db_path)
                 cursor = conn.cursor()
                 cursor.execute("SELECT * FROM photos")
                 photos = cursor.fetchall()
@@ -29,21 +29,21 @@ class RoutesManager:
             except sqlite3.OperationalError as e:
                 return jsonify({"error": str(e)}), 500
 
-        @self.main.route('/upload', methods=['GET', 'POST'])
-        def upload():
-            if request.method == 'POST':
-                file = request.files['file']
-                if file and file.filename.endswith('.zip'):
-                    zip_path = os.path.join('data', file.filename)
-                    file.save(zip_path)
+        # @self.main.route('/upload', methods=['GET', 'POST'])
+        # def upload():
+        #     if request.method == 'POST':
+        #         file = request.files['file']
+        #         if file and file.filename.endswith('.zip'):
+        #             zip_path = os.path.join('data', file.filename)
+        #             file.save(zip_path)
 
-                    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                        zip_ref.extractall('data/images')
+        #             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        #                 zip_ref.extractall('data/images')
 
-                    self.db_manager.populate_database('data/images')  # Utilisez self.db_manager
+        #             self.db_manager.populate_database('data/images')  # Utilisez self.db_manager
 
-                    return redirect(url_for('main.index'))
-            return render_template('upload.html')
+        #             return redirect(url_for('main.index'))
+        #     return render_template('upload.html')
 
         @self.main.route('/process_directory', methods=['GET', 'POST'])
         def process_directory():
@@ -54,3 +54,13 @@ class RoutesManager:
                     self.db_manager.populate_database(directory)  # Utilisez self.db_manager
                     return redirect(url_for('main.index'))
             return render_template('enter_directory.html')
+
+        @self.main.route('/statistics', methods=['GET'])
+        def statistics():
+            stats = self.db_manager.get_statistics()
+            return render_template('statistics.html', stats=stats)
+
+# Assurez-vous d'enregistrer le blueprint quelque part dans votre application Flask principale
+# app = Flask(__name__)
+# routes_manager = RoutesManager()
+# app.register_blueprint(routes_manager.main)

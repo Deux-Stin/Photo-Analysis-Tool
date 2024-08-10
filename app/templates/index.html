@@ -3,28 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Photo Analysis Dashboard</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <title>Home</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body>
-    <header>
-        <h1>Photo Analysis Dashboard</h1>
-    </header>
-    <main>
-        <div id="content">
-            <form action="{{ url_for('main.process_directory') }}" method="post">
-                <label for="directory">Enter the path to your image directory:</label>
-                <input type="text" id="directory" name="directory" placeholder="/path/to/images" required>
-                <button type="submit">Process Directory</button>
+    <div class="container mt-5">
+        <h1 class="text-center">Welcome to Your Photo Gallery</h1>
+        <div class="text-center mt-4">
+            <!-- <h2 class="text-center">Select Directory for folder(s) analysis</h2> -->
+            <form action="/process_directory" method="post">
+                <div class="form-group">
+                    <label for="directory">Select Directory for folder(s) analysis</label>
+                    <input type="text" class="form-control" id="directory" name="directory" placeholder="Enter the path to your image directory">
+                </div>
+                <button type="submit" class="btn btn-primary">Submit</button>
             </form>
-            
-			<!-- C:\Users\User\Pictures\ -->
-            <!-- Placeholder for Dash application -->
-            <iframe src="{{ url_for('main.index') }}" width="100%" height="800px" frameborder="0"></iframe>
+        <div class="text-center mt-4">
+            <a href="{{ url_for('main.statistics') }}" class="btn btn-info">View Statistics</a>
         </div>
-    </main>
-    <footer>
-        <p>&copy; 2024 Photo Analysis</p>
-    </footer>
+    </div>
 </body>
 </html>
