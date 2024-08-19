@@ -1,16 +1,11 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QPushButton, QLabel, QFileDialog, QStackedWidget
-import pyqtgraph as pg  # Importer pyqtgraph pour PlotWidget
-
-# Importer les classes personnalisées
-from scripts.photo_filter import PhotoFilter
+from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QStackedWidget, QFileDialog, QPushButton, QComboBox
 from scripts.data_visualizer import DataVisualizer
-from scripts.exif_manager import ExifManager
 from scripts.database_manager import DatabaseManager
 
 class HomePage(QWidget):
     def __init__(self, parent):
-        super().__init__()
+        super().__init__(parent)
         self.parent = parent
         self.init_ui()
 
@@ -21,9 +16,6 @@ class HomePage(QWidget):
         self.folder_button.clicked.connect(self.select_folder)
         layout.addWidget(self.folder_button)
 
-        self.total_photos_label = QLabel("Total Photos: 0", self)
-        layout.addWidget(self.total_photos_label)
-
         self.setLayout(layout)
 
     def select_folder(self):
@@ -33,20 +25,6 @@ class HomePage(QWidget):
             self.parent.analyze_folder(directory)
             self.parent.stacked_widget.setCurrentIndex(1)
 
-
-class AnalysisPage(QWidget):
-    def __init__(self, parent):
-        super().__init__()
-        self.parent = parent
-        self.init_ui()
-
-    def init_ui(self):
-        layout = QVBoxLayout()
-        self.data_visualizer = DataVisualizer(self.parent.db_manager.db_path, self)
-        layout.addWidget(self.data_visualizer)
-        self.setLayout(layout)
-
-
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -54,38 +32,45 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Photo Analysis Tool")
         self.setGeometry(100, 100, 1200, 800)
 
+        # Initialiser les gestionnaires
+        self.db_manager = DatabaseManager()
+
+        # StackedWidget pour basculer entre les pages
         self.stacked_widget = QStackedWidget()
         self.setCentralWidget(self.stacked_widget)
 
-        # Initialiser les gestionnaires
-        self.db_manager = DatabaseManager()
-        self.exif_manager = ExifManager()
-        self.photo_filter = PhotoFilter(self.db_manager.db_path)  # Passer le chemin de la DB
-
+        # Ajouter la page d'accueil et la page d'analyse
         self.home_page = HomePage(self)
         self.analysis_page = AnalysisPage(self)
 
         self.stacked_widget.addWidget(self.home_page)
         self.stacked_widget.addWidget(self.analysis_page)
 
-        # Initialiser data_visualizer après l'initialisation de analysis_page
-        self.data_visualizer = self.analysis_page.data_visualizer
-    
     def analyze_folder(self, directory):
         self.db_manager.populate_database(directory)
-        
-        # Utiliser une méthode existante pour obtenir les données des photos
-        all_photos = self.db_manager.get_folders(directory)['all_images']
-        self.photo_filter = PhotoFilter(self.db_manager.db_path)  # Réinitialiser avec le bon chemin
-        filtered_photos = self.photo_filter.get_folders_with_images(directory)
-        
-        # Afficher le nombre total de photos
-        self.home_page.total_photos_label.setText(f"Total Photos: {len(all_photos)}")
-        
-        # Mettre à jour les graphiques
+        self.analysis_page.data_visualizer.load_data()
+
+class AnalysisPage(QWidget):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.parent = parent
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout()
+
+
+        # Visualisation des données (la gestion du 1/3, 2/3 est dans DataVisualizer)
+        self.data_visualizer = DataVisualizer(self.parent.db_manager.db_path)
+        layout.addWidget(self.data_visualizer)
+
+        self.setLayout(layout)
+
+    def update_plot(self):
+        self.data_visualizer.set_plot_type(self.graph_type_combo.currentText())
+        self.data_visualizer.set_info_type(self.info_type_combo.currentText())
         self.data_visualizer.update_plot()
 
-# Lancer l'application
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
