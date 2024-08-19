@@ -1,6 +1,9 @@
 import sqlite3
 import pyqtgraph as pg
+<<<<<<< HEAD
 import os
+=======
+>>>>>>> f8c319bfb1144cdeb962d32391ab0397e9996d80
 from PyQt5.QtWidgets import QVBoxLayout, QWidget, QComboBox, QLabel, QHBoxLayout
 from PyQt5.QtCore import Qt
 from fractions import Fraction
@@ -8,13 +11,21 @@ import numpy as np
 import datetime
 
 class DataVisualizer(QWidget):
+<<<<<<< HEAD
     def __init__(self, db_path, directory):
+=======
+    def __init__(self, db_path):
+>>>>>>> f8c319bfb1144cdeb962d32391ab0397e9996d80
         super().__init__()
         self.db_path = db_path
         self.directory = directory  # Stockez le répertoire
         self.init_ui()
+<<<<<<< HEAD
         if directory:  # Vérifiez si directory n'est pas None
             self.load_folders(self.directory)
+=======
+        self.load_folders()
+>>>>>>> f8c319bfb1144cdeb962d32391ab0397e9996d80
         self.load_data()
 
     def init_ui(self):
@@ -39,6 +50,7 @@ class DataVisualizer(QWidget):
         self.display_type.addItem("Shutter Speed")
         self.display_type.addItem("Brand Name")
         left_layout.addWidget(self.display_type)
+<<<<<<< HEAD
 
         # Menu déroulant pour choisir le type de graphique
         self.graph_type = QComboBox(self)
@@ -102,6 +114,86 @@ class DataVisualizer(QWidget):
         # Charger les données depuis la base de données en fonction du filtre de dossier sélectionné
         selected_folder = self.folder_filter.currentText()
 
+=======
+
+        # Menu déroulant pour choisir le type de graphique
+        self.graph_type = QComboBox(self)
+        self.graph_type.addItem("Bar Graph")
+        self.graph_type.addItem("Line Graph")
+        left_layout.addWidget(self.graph_type)
+
+        # Label pour afficher le nombre total de photos
+        self.total_photos_label = QLabel("Total Photos: 0", self)
+        left_layout.addWidget(self.total_photos_label)
+
+        # Layout pour la section droite (2/3)
+        right_layout = QVBoxLayout()
+
+        # Widget pour le graphique
+        self.plot_widget = pg.PlotWidget(background='w')
+        right_layout.addWidget(self.plot_widget)
+
+        # Ajouter les layouts gauche (1/3) et droite (2/3) au content_layout
+        content_layout.addLayout(left_layout, 1)  # 1/3
+        content_layout.addLayout(right_layout, 2)  # 2/3
+
+        # Ajouter le layout horizontal au layout principal
+        main_layout.addLayout(content_layout)
+
+        self.setLayout(main_layout)
+
+        # Connexion des signaux
+        self.graph_type.currentIndexChanged.connect(self.update_plot)
+        self.display_type.currentIndexChanged.connect(self.update_plot)
+        self.folder_filter.currentIndexChanged.connect(self.update_plot)
+
+    def load_folders(self):
+        # Charger les noms de dossiers avec des photos depuis la base de données
+>>>>>>> f8c319bfb1144cdeb962d32391ab0397e9996d80
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        query = '''
+<<<<<<< HEAD
+        SELECT date_taken, COUNT(*)
+        FROM photos
+        WHERE date_taken IS NOT NULL AND date_taken != 'Unknown'
+        '''
+
+        if selected_folder != "All":
+            query += " AND folder_path = ?"
+            cursor.execute(query, (selected_folder,))
+        else:
+            cursor.execute(query)
+
+        query += " GROUP BY date_taken ORDER BY date_taken"
+
+        data = cursor.fetchall()
+        conn.close()
+
+        # Convertir les données en format utilisable
+        self.data = {
+            'dates': [datetime.datetime.strptime(row[0], '%Y-%m-%d').date() for row in data if row[0] is not None],
+            'counts': [row[1] for row in data if row[0] is not None]
+        }
+
+=======
+        SELECT DISTINCT folder_path
+        FROM photos
+        WHERE folder_path IS NOT NULL AND folder_path != ''
+        '''
+        cursor.execute(query)
+        folders = cursor.fetchall()
+        conn.close()
+
+        # Ajouter les dossiers à la liste déroulante
+        for folder in folders:
+            self.folder_filter.addItem(folder[0])
+
+    def load_data(self):
+        # Charger les données depuis la base de données en fonction du filtre de dossier sélectionné
+        selected_folder = self.folder_filter.currentText()
+
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
@@ -128,6 +220,7 @@ class DataVisualizer(QWidget):
             'counts': [row[1] for row in data if row[0] is not None]
         }
 
+>>>>>>> f8c319bfb1144cdeb962d32391ab0397e9996d80
         # Mise à jour du total des photos
         self.total_photos_label.setText(f"Total Photos: {sum(self.data['counts'])}")
 
