@@ -1,5 +1,6 @@
 # database_manager.py
 
+import datetime
 import sqlite3
 import os
 import exifread
@@ -37,12 +38,6 @@ class DatabaseManager:
             )
         ''')
         
-        # # Vérifier et ajouter la colonne folder_path si elle n'existe pas
-        # cursor.execute("PRAGMA table_info(photos);")
-        # columns = [column[1] for column in cursor.fetchall()]
-        # if 'folder_path' not in columns:
-        #     cursor.execute("ALTER TABLE photos ADD COLUMN folder_path TEXT;")
-        
         conn.commit()
         conn.close()
         print("Database initialized and table 'photos' is up-to-date.")
@@ -54,14 +49,19 @@ class DatabaseManager:
         
         with open(filepath, 'rb') as f:
             tags = exifread.process_file(f)
-        
-        # if ext == 'png':
-        #     return (os.path.basename(filepath), 'Unknown', 'Unknown', None, None, None, 'Unknown',
-        #             'Unknown','Unknown','Unknown Unknown')
 
         filename = os.path.basename(filepath)
 
+        # Récupération et formatage de la date
         date_taken = tags.get('EXIF DateTimeOriginal', 'Unknown')
+        if date_taken != 'Unknown':
+            try:
+                # Conversion de "YYYY:MM:DD HH:MM:SS" en "YYYY-MM-DD"
+                date_taken = datetime.datetime.strptime(str(date_taken), "%Y:%m:%d %H:%M:%S").strftime("%Y-%m-%d")
+            except ValueError:
+                print(f"Failed to parse date: {date_taken}")
+                date_taken = 'Unknown'
+
         focal_length = tags.get('EXIF FocalLength', 'Unknown')
         aperture = tags.get('EXIF FNumber', 'Unknown')
         shutter_speed = tags.get('EXIF ExposureTime', 'Unknown')
@@ -74,8 +74,8 @@ class DatabaseManager:
         gps_info = (tags.get('GPS GPSLatitude', 'Unknown') + ' ' + tags.get('GPS GPSLongitude', 'Unknown')).strip()
 
         hour_taken = 'Unknown'
-        if date_taken != 'Unknown':
-            date_parts = str(date_taken).split(' ')
+        if date_taken != 'Unknown' and ' ' in str(tags.get('EXIF DateTimeOriginal', '')):
+            date_parts = str(tags.get('EXIF DateTimeOriginal', '')).split(' ')
             if len(date_parts) > 1:
                 hour_taken = date_parts[1]
 
@@ -103,7 +103,7 @@ class DatabaseManager:
 
         return (
             filename,
-            str(date_taken),
+            date_taken,
             hour_taken,
             focal_length_value,
             aperture_value,
@@ -115,7 +115,7 @@ class DatabaseManager:
         )
 
     raw_extensions = [
-        'jpg', 'jpeg', 'png', 'tiff', 'tif', 'arw', 'crw', 'cr2', 'cr3',
+        'jpg', 'jpeg', 'tiff', 'tif', 'arw', 'crw', 'cr2', 'cr3',
         'nef', 'nrw', 'orf', 'ptx', 'pef', 'raf', 'rw2', 'srw'
     ]
 
@@ -167,25 +167,24 @@ class DatabaseManager:
             return cursor.fetchall()
 
     def get_folders(self, directory):
-            directory = directory.replace("\\", "/")
-            all_images = []
-            folders_with_images = set()
+        directory = directory.replace("\\", "/")
+        folders_with_images = set()
 
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute('SELECT filename, folder_path FROM photos')
-                all_photos = cursor.fetchall()
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT DISTINCT folder_path 
+                FROM photos 
+                WHERE folder_path IS NOT NULL AND folder_path != ''
+            ''')
+            all_folders = cursor.fetchall()
 
-                for filename, folder_path in all_photos:
-                    full_path = os.path.join(directory, folder_path, filename).replace("\\", "/")
-                    if full_path.startswith(directory):
-                        all_images.append(full_path)
-                        folders_with_images.add(folder_path)
+            for folder in all_folders:
+                full_folder_path = os.path.join(directory, folder[0]).replace("\\", "/")
+                if os.path.exists(full_folder_path):
+                    folders_with_images.add(folder[0])
 
-            return {
-                'all_images': all_images,
-                'folders_with_images': list(folders_with_images)
-            }
+        return list(folders_with_images)
 
     def get_photo_data(self, filter_text):
         with sqlite3.connect(self.db_path) as conn:
