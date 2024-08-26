@@ -1,190 +1,42 @@
-import sqlite3
-import pyqtgraph as pg
-from PyQt5.QtWidgets import QVBoxLayout, QWidget, QComboBox, QLabel, QHBoxLayout, QFileDialog, QPushButton
-from PyQt5.QtCore import Qt
-from fractions import Fraction
-import numpy as np
-import datetime
+import subprocess
+import json
 
-class DataVisualizer(QWidget):
-    def __init__(self, db_path):
-        super().__init__()
-        self.db_path = db_path
-        self.init_ui()
-        self.load_data()
+def get_exif_data(image_path):
+    # Appel à exiftool pour obtenir les métadatas au format JSON
+    result = subprocess.run(['exiftool', '-json', image_path], capture_output=True, text=True)
+    
+    if result.returncode != 0:
+        print(f"Erreur lors de l'exécution de exiftool: {result.stderr}")
+        return None
+    
+    # Convertir la sortie JSON en dictionnaire Python
+    exif_data = json.loads(result.stdout)
+    
+    # Assurer que l'extrait contient des métadatas
+    if not exif_data:
+        print("Aucune donnée EXIF trouvée.")
+        return None
+    
+    return exif_data[0]
 
-    def init_ui(self):
-        # Layout principal
-        main_layout = QVBoxLayout()
+image_path = r'C:\\Users\\User\\Desktop\\Tmp Images\\debug\\20240607_201030.heic'
+metadata = get_exif_data(image_path)
 
-        # Liste déroulante pour le filtrage des dossiers
-        self.folder_filter = QComboBox(self)
-        self.folder_filter.addItem("All")
-        main_layout.addWidget(self.folder_filter)
-        self.load_folders()
+if metadata:
+    print("Métadatas de l'image :")
+    for key, value in metadata.items():
+        print(f"{key}: {value}")
 
-        # Layout horizontal pour séparer 1/3 et 2/3
-        content_layout = QHBoxLayout()
 
-        # Layout pour la section gauche (1/3)
-        left_layout = QVBoxLayout()
+# # Import Libraries
+# from PIL import Image
+# from PIL.ExifTags import TAGS
 
-        # Menu déroulant pour choisir le type d'affichage
-        self.display_type = QComboBox(self)
-        self.display_type.addItem("Date Taken")
-        self.display_type.addItem("Aperture")
-        self.display_type.addItem("Shutter Speed")
-        self.display_type.addItem("Brand Name")
-        left_layout.addWidget(self.display_type)
+# # Open Image
+# img=Image.open('C:\\Users\\User\\Desktop\\Tmp Images\\Coord GPS\\20221216_111746.jpg')
 
-        # Menu déroulant pour choisir le type de graphique
-        self.graph_type = QComboBox(self)
-        self.graph_type.addItem("Bar Graph")
-        self.graph_type.addItem("Line Graph")
-        left_layout.addWidget(self.graph_type)
-
-        # Label pour afficher le nombre total de photos
-        self.total_photos_label = QLabel("Total Photos: 0", self)
-        left_layout.addWidget(self.total_photos_label)
-
-        # Layout pour la section droite (2/3)
-        right_layout = QVBoxLayout()
-
-        # Widget pour le graphique
-        self.plot_widget = pg.PlotWidget(background='w')
-        right_layout.addWidget(self.plot_widget)
-
-        # Ajouter les layouts gauche (1/3) et droite (2/3) au content_layout
-        content_layout.addLayout(left_layout, 1)  # 1/3
-        content_layout.addLayout(right_layout, 2)  # 2/3
-
-        # Ajouter le layout horizontal au layout principal
-        main_layout.addLayout(content_layout)
-
-        self.setLayout(main_layout)
-
-        # Connexion des signaux
-        self.graph_type.currentIndexChanged.connect(self.update_plot)
-        self.display_type.currentIndexChanged.connect(self.update_plot)
-        self.folder_filter.currentIndexChanged.connect(self.update_plot)
-
-    def select_folder(self):
-        # Ouvre une boîte de dialogue pour sélectionner un dossier
-        directory = QFileDialog.getExistingDirectory(self, "Select Folder")
-        if directory:
-            self.load_data(directory)
-
-    def load_data(self, folder_path=None):
-        # Charger les données depuis la base de données
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        query = '''
-        SELECT date_taken, COUNT(*) 
-        FROM photos 
-        WHERE date_taken IS NOT NULL AND date_taken != 'Unknown'
-        '''
-        
-        if folder_path:
-            query += " AND folder_path = ?"
-            cursor.execute(query, (folder_path,))
-        else:
-            cursor.execute(query)
-
-        query += " GROUP BY date_taken ORDER BY date_taken"
-
-        data = cursor.fetchall()
-        conn.close()
-
-        # Convertir les données en format utilisable
-        self.data = {
-            'dates': [datetime.datetime.strptime(row[0], '%Y-%m-%d').date() for row in data],
-            'counts': [row[1] for row in data]
-        }
-
-        # Mise à jour du total des photos
-        self.total_photos_label.setText(f"Total Photos: {sum(self.data['counts'])}")
-
-        # Mise à jour du graphique
-        self.update_plot()
-
-    def update_plot(self):
-        display_type = self.display_type.currentText()
-        graph_type = self.graph_type.currentText()
-
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-
-            # Définition de la requête SQL en fonction du type de données affiché
-            if display_type == "Date Taken":
-                query = "SELECT date_taken, COUNT(*) FROM photos WHERE date_taken != 'Unknown' GROUP BY date_taken ORDER BY date_taken"
-            elif display_type == "Aperture":
-                query = "SELECT aperture, COUNT(*) FROM photos GROUP BY aperture ORDER BY aperture"
-            elif display_type == "Shutter Speed":
-                query = "SELECT shutter_speed, COUNT(*) FROM photos GROUP BY shutter_speed ORDER BY shutter_speed"
-            elif display_type == "Brand Name":
-                query = "SELECT brand_name, COUNT(*) FROM photos GROUP BY brand_name ORDER BY brand_name"
-            else:
-                query = "SELECT date_taken, COUNT(*) FROM photos GROUP BY date_taken ORDER BY date_taken"  # Valeur par défaut
-
-            cursor.execute(query)
-            data = cursor.fetchall()
-
-            if not data:
-                print("No data found for the selected criteria.")
-                return
-
-            x_values = []
-            y_values = []
-
-            # Traitement spécifique pour chaque type de données
-            if display_type == "Date Taken":
-                for item in data:
-                    date_str = item[0]
-                    try:
-                        date = datetime.datetime.strptime(date_str, "%Y-%m-%d")
-                        x_values.append(date)
-                        y_values.append(item[1])
-                    except ValueError:
-                        print(f"Invalid date format: {date_str}")
-                        continue
-
-                # Conversion des dates en nombres pour PyQtGraph
-                x_ticks = [pg.ptime.mktime(date.timetuple()) for date in x_values]
-                self.plot_widget.getAxis('bottom').setTicks([[(x_ticks[i], date.strftime('%d-%m-%Y')) for i, date in enumerate(x_values)]])
-            elif display_type == "Shutter Speed":
-                for item in data:
-                    speed = item[0]
-                    if speed > 0:
-                        fraction = Fraction(1, int(1/speed)).limit_denominator()
-                        x_values.append(f"1/{fraction.denominator}")
-                    else:
-                        x_values.append("Unknown")
-                    y_values.append(item[1])
-            else:
-                for item in data:
-                    x_values.append(str(item[0]))
-                    y_values.append(item[1])
-
-            self.plot_widget.clear()
-
-            # Affichage des graphiques
-            if graph_type == "Bar Graph":
-                bg = pg.BarGraphItem(x=np.arange(len(x_values)), height=y_values, width=0.6, brush='b')
-                self.plot_widget.addItem(bg)
-            elif graph_type == "Line Graph":
-                self.plot_widget.plot(y=y_values, x=np.arange(len(x_values)), symbol='o', pen='b')
-
-            # Ajout des valeurs au survol
-            self.add_hover_values(x_values, y_values)
-
-            # Mise à jour des ticks pour les labels de l'axe des X
-            ticks = [(i, x) for i, x in enumerate(x_values)]
-            self.plot_widget.getAxis('bottom').setTicks([ticks])
-
-    def add_hover_values(self, x_values, y_values):
-        # Implémentation de l'affichage des valeurs au survol des points/barres
-        for i, (x, y) in enumerate(zip(x_values, y_values)):
-            text = pg.TextItem(f"{y}", anchor=(0.5, -1.5), color='k')
-            text.setPos(i, y)
-            self.plot_widget.addItem(text)
+# #Get EXIF Data
+# exif_table={}
+# for k, v in img.getexif().items():
+#     tag=TAGS.get(k)
+#     exif_table[tag]=v

@@ -1,11 +1,14 @@
-# database_manager.py
-
+from fractions import Fraction
 import datetime
 import sqlite3
 import os
 import exifread
+import json
+import subprocess
 from statistics import mean
-from fractions import Fraction
+from PIL import Image, ExifTags
+import pillow_heif
+import re
 
 class DatabaseManager:
     def __init__(self, db_path='data/photos.db'):
@@ -27,7 +30,7 @@ class DatabaseManager:
                 filename TEXT NOT NULL,
                 date_taken TEXT,
                 hour_taken TEXT,
-                focal_length REAL,
+                focal_length_in_35mm REAL,
                 aperture REAL,
                 shutter_speed REAL,
                 folder_path TEXT,
@@ -40,20 +43,40 @@ class DatabaseManager:
         
         conn.commit()
         conn.close()
-        print("Database initialized and table 'photos' is up-to-date.")
+        print("Database initialized and table 'photos' is created.")
+
+    @staticmethod
+    def get_exif_data(filepath):
+        result = subprocess.run(['exiftool', '-json', filepath], capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"Erreur lors de l'exécution de exiftool: {result.stderr}")
+            return None
+
+        exif_data = json.loads(result.stdout)
+        if not exif_data:
+            print("Aucune donnée EXIF trouvée.")
+            return None
+        
+        return exif_data[0]
+
 
     @staticmethod
     def process_image(filepath):
         _, ext = os.path.splitext(filepath)
         ext = ext.lower().strip('.')
-        
-        with open(filepath, 'rb') as f:
-            tags = exifread.process_file(f)
+
+        # Utiliser exiftool pour les fichiers heic
+        if ext in ['heic', 'heif']: #, 'arw', 'cr2', 'nef'
+            tags = DatabaseManager.get_exif_data(filepath)
+        else:
+            # Utiliser exifread pour les fichiers jpg, jpeg, tiff, etc.
+            with open(filepath, 'rb') as f:
+                tags = exifread.process_file(f)
 
         filename = os.path.basename(filepath)
 
         # Récupération et formatage de la date
-        date_taken = tags.get('EXIF DateTimeOriginal', 'Unknown')
+        date_taken = tags.get('EXIF DateTimeOriginal', tags.get('DateTimeOriginal', 'Unknown'))
         if date_taken != 'Unknown':
             try:
                 # Conversion de "YYYY:MM:DD HH:MM:SS" en "YYYY-MM-DD"
@@ -62,42 +85,114 @@ class DatabaseManager:
                 print(f"Failed to parse date: {date_taken}")
                 date_taken = 'Unknown'
 
-        focal_length = tags.get('EXIF FocalLength', 'Unknown')
-        aperture = tags.get('EXIF FNumber', 'Unknown')
-        shutter_speed = tags.get('EXIF ExposureTime', 'Unknown')
+        focal_length = tags.get('EXIF FocalLengthIn35mmFilm', tags.get('FocalLengthIn35mmFormat', 'Unknown'))
+        aperture = tags.get('EXIF FNumber', tags.get('Aperture','Unknown'))
+        shutter_speed = tags.get('EXIF ExposureTime', tags.get('ShutterSpeed', 'Unknown'))
 
-        brand_name = tags.get('Image Make', 'Unknown')
-        brand_name = brand_name.values #passage en str
-        camera_model = tags.get('Image Model', 'Unknown')
-        camera_model = camera_model.values #passage en str
+        brand_name = tags.get('Image Make', tags.get('Make', 'Unknown'))
+        camera_model = tags.get('Image Model', tags.get('Model', 'Unknown'))
 
-        gps_info = (tags.get('GPS GPSLatitude', 'Unknown') + ' ' + tags.get('GPS GPSLongitude', 'Unknown')).strip()
+        if ext not in ['heic', 'heif']:
+            focal_length = str(focal_length.values) if focal_length !='Unknown' else 'Unknown'
+            brand_name = str(brand_name.values) if brand_name != 'Unknown' else 'Unknown'
+            camera_model = str(camera_model.values) if camera_model != 'Unknown' else 'Unknown'
+            # Décodage info GPS :
+            gps_latitude_ref = tags.get('GPS GPSLatitudeRef', 'Unknown')
+            gps_latitude_ref = str(gps_latitude_ref.values) if gps_latitude_ref != 'Unknown' else 'Unknown'
+            gps_latitude = tags.get('GPS GPSLatitude', 'Unknown')
+            gps_latitude = gps_latitude.values if gps_latitude != 'Unknown' else [Fraction(0), Fraction(0), Fraction(0)]
+            gps_longitude_ref = tags.get('GPS GPSLongitudeRef', 'Unknown')
+            gps_longitude_ref = str(gps_longitude_ref.values) if gps_longitude_ref != 'Unknown' else 'Unknown'
+            gps_longitude = tags.get('GPS GPSLongitude', 'Unknown')
+            gps_longitude = gps_longitude.values if gps_longitude != 'Unknown' else [Fraction(0), Fraction(0), Fraction(0)]
 
+            # Convertir les coordonnées
+            latitude_decimal = DatabaseManager.ratio_to_decimal(gps_latitude)
+            longitude_decimal = DatabaseManager.ratio_to_decimal(gps_longitude)
+
+            # Stocker les informations dans un dictionnaire
+            gps_info = {
+                'latitude': latitude_decimal,
+                'longitude': longitude_decimal,
+                'latitude_ref': gps_latitude_ref,
+                'longitude_ref': gps_longitude_ref
+            }
+            gps_info = (
+                f"Latitude: {gps_info['latitude']} {gps_info['latitude_ref']}, "
+                f"Longitude: {gps_info['longitude']} {gps_info['longitude_ref']}"
+            )
+        
+        else:
+            # Décodage info GPS :
+            # gps_latitude_ref = tags.get('GPS GPSLatitudeRef', tags.get('GPSLatitudeRef', 'Unknown'))
+            # try:
+            #     gps_latitude_ref = str(gps_latitude_ref.values) if gps_latitude_ref != 'Unknown' else 'Unknown'
+            # except Exception as e:
+            #     print(f"Error processing file '{filepath}': {e}")
+            # gps_latitude_ref = gps_latitude_ref[0]
+
+            gps_latitude = tags.get('GPS GPSLatitude', tags.get('GPSLatitude', 'Unknown'))
+
+            try:
+                gps_latitude = gps_latitude.values if gps_latitude != 'Unknown' else [Fraction(0), Fraction(0), Fraction(0)]
+            except Exception as e:
+                print(f"Error processing file '{filepath}': {e}")
+
+            # gps_longitude_ref = tags.get('GPS GPSLongitudeRef', tags.get('GPSLongitudeRef', 'Unknown'))
+            # try:
+            #     gps_longitude_ref = str(gps_longitude_ref.values) if gps_longitude_ref != 'Unknown' else 'Unknown'
+            # except Exception as e:
+            #     print(f"Error processing file '{filepath}': {e}")
+            # gps_longitude_ref = gps_longitude_ref[0]
+
+            gps_longitude = tags.get('GPS GPSLongitude', tags.get('GPSLongitude', 'Unknown'))
+
+            try:
+                gps_longitude = gps_longitude.values if gps_longitude != 'Unknown' else [Fraction(0), Fraction(0), Fraction(0)]
+            except Exception as e:
+                print(f"Error processing file '{filepath}': {e}")
+
+            heic_latitude_decimal, latitude_ref = DatabaseManager.dms_to_decimal(gps_latitude)
+            heic_longitude_decimal, longitude_ref = DatabaseManager.dms_to_decimal(gps_longitude)
+
+            gps_info = (f"Latitude: {heic_latitude_decimal} {latitude_ref}, "
+                        f"Longitude: {heic_longitude_decimal} {longitude_ref}"
+                        )
+
+        
         hour_taken = 'Unknown'
-        if date_taken != 'Unknown' and ' ' in str(tags.get('EXIF DateTimeOriginal', '')):
-            date_parts = str(tags.get('EXIF DateTimeOriginal', '')).split(' ')
+        if date_taken != 'Unknown' and ' ' in str(tags.get('EXIF DateTimeOriginal', tags.get('DateTimeOriginal',''))):
+            date_parts = str(tags.get('EXIF DateTimeOriginal', tags.get('DateTimeOriginal',''))).split(' ')
             if len(date_parts) > 1:
                 hour_taken = date_parts[1]
 
         try:
-            focal_length_value = float(focal_length.values[0].num) / float(focal_length.values[0].den) if focal_length != 'Unknown' else None
+            focal_length = float(focal_length.values[0].num) / float(focal_length.values[0].den) if focal_length != 'Unknown' else None
         except (AttributeError, TypeError):
-            focal_length_value = None
+            print(focal_length)
+            # focal_length = None
 
         try:
-            aperture_value = float(aperture.values[0].num) / float(aperture.values[0].den) if aperture != 'Unknown' else None
+            aperture = float(aperture.values[0].num) / float(aperture.values[0].den) if aperture != 'Unknown' else None
         except (AttributeError, TypeError):
-            aperture_value = None
+            print(aperture)
+            # aperture = None
 
         try:
-            shutter_speed_value = float(shutter_speed.values[0].num) / float(shutter_speed.values[0].den) if shutter_speed != 'Unknown' else None
+            shutter_speed = float(shutter_speed.values[0].num) / float(shutter_speed.values[0].den) if shutter_speed != 'Unknown' else None
         except (AttributeError, TypeError):
-            shutter_speed_value = None
+            print(shutter_speed)
+            # shutter_speed = None
+
+        # Conversion au format float
+        focal_length = float(re.search(r'\d+(\.\d+)?', focal_length).group())
+        aperture = float(aperture)
+        shutter_speed = float(shutter_speed)
 
         # Remplacement des valeurs None par des chaînes vides ou valeurs par défaut
-        focal_length_value = focal_length_value if focal_length_value is not None else 0.0
-        aperture_value = aperture_value if aperture_value is not None else 0.0
-        shutter_speed_value = shutter_speed_value if shutter_speed_value is not None else 0.0
+        focal_length = focal_length if focal_length is not None else 0.0
+        aperture = aperture if aperture is not None else 0.0
+        shutter_speed = shutter_speed if shutter_speed is not None else 0.0
 
         folder_path = os.path.dirname(filepath)
 
@@ -105,9 +200,9 @@ class DatabaseManager:
             filename,
             date_taken,
             hour_taken,
-            focal_length_value,
-            aperture_value,
-            shutter_speed_value,
+            focal_length,
+            aperture,
+            shutter_speed,
             brand_name,
             camera_model,
             gps_info,
@@ -115,9 +210,52 @@ class DatabaseManager:
         )
 
     raw_extensions = [
-        'jpg', 'jpeg', 'tiff', 'tif', 'arw', 'crw', 'cr2', 'cr3',
+        'jpg', 'jpeg', 'heic', 'heif', 'tiff', 'tif', 'arw', 'crw', 'cr2', 'cr3',
         'nef', 'nrw', 'orf', 'ptx', 'pef', 'raf', 'rw2', 'srw'
     ]
+
+    @staticmethod
+    def ratio_to_decimal(ratio):
+        """
+        Convertit un ratio GPS en degrés décimaux.
+        
+        :param ratio: Une liste de fractions [degrés, minutes, secondes]
+        :return: La valeur en degrés décimaux
+        """
+        if isinstance(ratio, list) and len(ratio) == 3:
+            degrees, minutes, seconds = ratio
+            # Assurer que degrees, minutes, et seconds sont des instances de Fraction
+            if not isinstance(degrees, Fraction):
+                degrees = Fraction(degrees)
+            if not isinstance(minutes, Fraction):
+                minutes = Fraction(minutes)
+            if not isinstance(seconds, Fraction):
+                seconds = Fraction(seconds)
+            
+            return float(degrees) + float(minutes) / 60 + float(seconds) / 3600
+        else:
+            raise ValueError("Le ratio doit être une liste de trois valeurs : [degrés, minutes, secondes]")
+        
+    @staticmethod
+    def dms_to_decimal(dms):
+        """
+        Convert DMS (degrees, minutes, seconds) string format to decimal degrees.
+        """
+        match = re.match(r"(\d+)\s*deg\s*(\d+)'\s*([\d.]+)\"\s*([NSEW])", dms)
+        if not match:
+            raise ValueError(f"Invalid DMS format: {dms}")
+        
+        degrees = int(match.group(1))
+        minutes = int(match.group(2))
+        seconds = float(match.group(3))
+        direction = match.group(4)
+        
+        decimal_degrees = degrees + minutes / 60 + seconds / 3600
+        
+        # if direction in ['S', 'W']:
+        #     decimal_degrees *= -1
+        
+        return decimal_degrees, direction
 
     def populate_database(self, directory, raw_extensions=None):
         if raw_extensions is None:
@@ -146,7 +284,7 @@ class DatabaseManager:
                         try:
                             photo_data = self.process_image(filepath)
                             cursor.execute('''
-                                INSERT INTO photos (filename, date_taken, hour_taken, focal_length, aperture, shutter_speed, 
+                                INSERT INTO photos (filename, date_taken, hour_taken, focal_length_in_35mm, aperture, shutter_speed, 
                                            brand_name, camera_model, gps_info, folder_path)
                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             ''', photo_data)
