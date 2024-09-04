@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo Analysis Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <header>
+        <h1>Photo Analysis Dashboard</h1>
+    </header>
+    <main>
+        <div id="content">
+            <form action="{{ url_for('main.process_directory') }}" method="post">
+                <label for="directory">Enter the path to your image directory:</label>
+                <input type="text" id="directory" name="directory" placeholder="/path/to/images" required>
+                <button type="submit">Process Directory</button>
+            </form>
+            
+			<!-- C:\Users\User\Pictures\ -->
+            <!-- Placeholder for Dash application -->
+            <iframe src="{{ url_for('main.index') }}" width="100%" height="800px" frameborder="0"></iframe>
+        </div>
+    </main>
+    <footer>
+        <p>&copy; 2024 Photo Analysis</p>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="text-center">Welcome to Your Photo Gallery</h1>
+        <div class="text-center mt-4">
+            <!-- <h2 class="text-center">Select Directory for folder(s) analysis</h2> -->
+            <form action="/process_directory" method="post">
+                <div class="form-group">
+                    <label for="directory">Select Directory for folder(s) analysis</label>
+                    <input type="text" class="form-control" id="directory" name="directory" placeholder="Enter the path to your image directory">
+                </div>
+                <button type="submit" class="btn btn-primary">Submit</button>
+            </form>
+        <div class="text-center mt-4">
+            <a href="{{ url_for('main.statistics') }}" class="btn btn-info">View Statistics</a>
+        </div>
+    </div>
+</body>
+</html>
