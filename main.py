@@ -1,5 +1,5 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QFileDialog, QPushButton, QTabWidget, QMessageBox
+from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QFileDialog, QPushButton, QTabWidget, QMessageBox, QTextEdit, QSpacerItem, QSizePolicy
 from PyQt5.QtGui import QIcon
 from scripts.data_visualizer import DataVisualizer
 from scripts.database_manager import DatabaseManager
@@ -8,9 +8,11 @@ from scripts.thumbnail_view import ThumbnailViewWidget
 from scripts.export_data import ExportDataWidget
 from scripts.ui_enhancements import UIEnhancementsWidget
 from scripts.map_view import MapViewWidget  # Importer la classe MapViewWidget
+from scripts.data_loader import DataLoader
 import sqlite3
 import folium
-import re
+import re, os
+from PyQt5.QtCore import Qt
 
 class HomePage(QWidget):
     def __init__(self, parent):
@@ -21,9 +23,43 @@ class HomePage(QWidget):
     def init_ui(self):
         layout = QVBoxLayout()
 
+        # Création d'un QTextEdit pour afficher le contenu du README.md
+        self.readme_display = QTextEdit(self)
+        self.readme_display.setReadOnly(True)
+        self.readme_display.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)  # Permet au QTextEdit de s'étendre
+
+
+        # Chargement du contenu du README.md
+        self.load_readme_content()
+
+        # Ajout du QTextEdit au layout
+        layout.addWidget(self.readme_display)
+
         self.folder_button = QPushButton("Select Folder to Analyze", self)
         self.folder_button.clicked.connect(self.select_folder)
-        layout.addWidget(self.folder_button)
+
+        # Appliquer des styles pour rendre le bouton plus visible tout en maintenant la taille du conteneur
+        self.folder_button.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;  /* Couleur de fond bleu */
+                color: white;  /* Couleur du texte en blanc */
+                font-size: 16px;  /* Taille de la police */
+                padding: 15px 30px;  /* Ajouter du padding pour une taille de bouton adéquate */
+                border-radius: 8px;  /* Arrondir les coins */
+                border: 2px solid #2980b9;  /* Ajouter une bordure bleue foncée */
+                min-width: 200px;  /* Largeur minimale du bouton */
+                min-height: 50px;  /* Hauteur minimale du bouton */
+            }
+            QPushButton:hover {
+                background-color: #2980b9;  /* Couleur de fond plus foncée au survol */
+            }
+            QPushButton:pressed {
+                background-color: #1f6391;  /* Couleur de fond encore plus foncée lors du clic */
+            }
+        """)
+
+        # Ajouter le bouton avec un alignement central
+        layout.addWidget(self.folder_button, alignment=Qt.AlignCenter)
 
         self.setLayout(layout)
 
@@ -33,6 +69,15 @@ class HomePage(QWidget):
         if directory:
             self.parent.analyze_folder(directory)
             self.parent.tabs.setCurrentIndex(1)  # Basculer vers l'onglet "Analysis"
+
+    def load_readme_content(self):
+        readme_path = os.path.join(os.path.dirname(__file__), 'README.md')
+        if os.path.exists(readme_path):
+            with open(readme_path, 'r') as file:
+                content = file.read()
+                self.readme_display.setPlainText(content)
+        else:
+            self.readme_display.setPlainText("README.md file not found.")
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -91,14 +136,14 @@ class MainWindow(QMainWindow):
             self.tabs.insertTab(1, self.analysis_page, "Analysis")
             
             # Synchroniser les folders entre DataVisualizer et ThumbnailViewWidget
-            folders_data = self.analysis_page.data_visualizer.get_folders()
+            data_loader = DataLoader(self.db_manager.db_path)  # Crée une instance de DataLoader
+            folders_data = data_loader.get_folders()  # Utilise DataLoader pour obtenir les dossiers
             self.grid_view_page.set_folders(folders_data['folders_with_images'])
 
             # Connecter les signaux pour la mise à jour de la vue en mosaïque
             self.analysis_page.data_visualizer.folder_filter.currentIndexChanged.connect(self.grid_view_page.folder_filter_combo.setCurrentIndex)
             self.grid_view_page.folder_filter_combo.currentIndexChanged.connect(self.analysis_page.data_visualizer.folder_filter.setCurrentIndex)
             
-
             # Initialiser la vue en mosaïque
             self.update_grid_view()
         else:
@@ -106,7 +151,8 @@ class MainWindow(QMainWindow):
 
     def update_grid_view(self, selected_folder="All"):
         # Mise à jour des images affichées dans la vue en mosaïque
-        folders_data = self.analysis_page.data_visualizer.get_folders()
+        data_loader = DataLoader(self.db_manager.db_path)  # Crée une instance de DataLoader
+        folders_data = data_loader.get_folders()  # Utilise DataLoader pour obtenir les dossiers
         if selected_folder != "All" and selected_folder in folders_data['folder_images']:
             selected_folder = selected_folder.replace('\\','/')
             selected_images = folders_data['folder_images'][selected_folder]
@@ -117,37 +163,35 @@ class MainWindow(QMainWindow):
             else:
                 self.grid_view_page.display_thumbnails([])
 
-
     def update_map_view(self):
         gps_data = self.get_images_with_gps(self.db_manager.db_path)
         map_object = self.create_map_with_gps_data(gps_data)
         if map_object:
             self.map_view_page.load_map(map_object)
 
-
     def parse_gps_info(self, gps_info):
-            """
-            Parse the GPS information string to extract latitude and longitude.
-            """
-            # Regex patterns to match latitude and longitude
-            lat_pattern = re.compile(r'Latitude: ([\d.]+) ([NS])')
-            lon_pattern = re.compile(r'Longitude: ([\d.]+) ([EW])')
+        """
+        Parse the GPS information string to extract latitude and longitude.
+        """
+        # Regex patterns to match latitude and longitude
+        lat_pattern = re.compile(r'Latitude: ([\d.]+) ([NS])')
+        lon_pattern = re.compile(r'Longitude: ([\d.]+) ([EW])')
 
-            # Find latitude
-            lat_match = lat_pattern.search(gps_info)
-            if lat_match:
-                latitude = float(lat_match.group(1))
-                if lat_match.group(2) == 'S':
-                    latitude = -latitude  # Convert to negative if South
+        # Find latitude
+        lat_match = lat_pattern.search(gps_info)
+        if lat_match:
+            latitude = float(lat_match.group(1))
+            if lat_match.group(2) == 'S':
+                latitude = -latitude  # Convert to negative if South
 
-            # Find longitude
-            lon_match = lon_pattern.search(gps_info)
-            if lon_match:
-                longitude = float(lon_match.group(1))
-                if lon_match.group(2) == 'W':
-                    longitude = -longitude  # Convert to negative if West
+        # Find longitude
+        lon_match = lon_pattern.search(gps_info)
+        if lon_match:
+            longitude = float(lon_match.group(1))
+            if lon_match.group(2) == 'W':
+                longitude = -longitude  # Convert to negative if West
 
-            return latitude, longitude
+        return latitude, longitude
 
     def get_images_with_gps(self, database_path):
         conn = sqlite3.connect(database_path)
@@ -166,7 +210,6 @@ class MainWindow(QMainWindow):
             images_with_gps.append((image_path, latitude, longitude))
         
         return images_with_gps
-
 
     def create_map_with_gps_data(self, gps_data):
         if not gps_data:
@@ -193,11 +236,9 @@ class MainWindow(QMainWindow):
 
         return map_object
 
-
     def on_tab_change(self, index):
         if self.tabs.tabText(index) == "Map View":
             self.update_map_view()
-
 
 class AnalysisPage(QWidget):
     def __init__(self, parent):

@@ -30,6 +30,7 @@ class DatabaseManager:
                 filename TEXT NOT NULL,
                 date_taken TEXT,
                 hour_taken TEXT,
+                iso REAL,
                 focal_length_in_35mm REAL,
                 aperture REAL,
                 shutter_speed REAL,
@@ -85,6 +86,7 @@ class DatabaseManager:
                 print(f"Failed to parse date: {date_taken}")
                 date_taken = 'Unknown'
 
+        iso = tags.get('EXIF ISOSpeedRatings', tags.get('ISO','Unknown'))
         focal_length = tags.get('EXIF FocalLengthIn35mmFilm', tags.get('FocalLengthIn35mmFormat', 'Unknown'))
         aperture = tags.get('EXIF FNumber', tags.get('Aperture','Unknown'))
         shutter_speed = tags.get('EXIF ExposureTime', tags.get('ShutterSpeed', 'Unknown'))
@@ -93,6 +95,7 @@ class DatabaseManager:
         camera_model = tags.get('Image Model', tags.get('Model', 'Unknown'))
 
         if ext not in ['heic', 'heif']:
+            iso = str(iso.values) if iso !='Unknown' else 'Unknown'
             focal_length = str(focal_length.values) if focal_length !='Unknown' else 'Unknown'
             brand_name = str(brand_name.values) if brand_name != 'Unknown' else 'Unknown'
             camera_model = str(camera_model.values) if camera_model != 'Unknown' else 'Unknown'
@@ -167,6 +170,12 @@ class DatabaseManager:
                 hour_taken = date_parts[1]
 
         try:
+            iso = float(iso.values[0].num) / float(iso.values[0].den) if iso != 'Unknown' else None
+        except (AttributeError, TypeError):
+            print(iso)
+            # iso = None
+
+        try:
             focal_length = float(focal_length.values[0].num) / float(focal_length.values[0].den) if focal_length != 'Unknown' else None
         except (AttributeError, TypeError):
             print(focal_length)
@@ -185,21 +194,25 @@ class DatabaseManager:
             # shutter_speed = None
 
         # Conversion au format float
+        iso = float(re.search(r'\d+(\.\d+)?', iso).group())
         focal_length = float(re.search(r'\d+(\.\d+)?', focal_length).group())
         aperture = float(aperture)
         shutter_speed = float(shutter_speed)
 
         # Remplacement des valeurs None par des chaînes vides ou valeurs par défaut
+        iso = iso if iso is not None else 0.0
         focal_length = focal_length if focal_length is not None else 0.0
         aperture = aperture if aperture is not None else 0.0
         shutter_speed = shutter_speed if shutter_speed is not None else 0.0
 
         folder_path = os.path.dirname(filepath)
+        brand_name = brand_name.capitalize() # Pour mettre seulement la première lettre en majuscule
 
         return (
             filename,
             date_taken,
             hour_taken,
+            iso,
             focal_length,
             aperture,
             shutter_speed,
@@ -284,9 +297,9 @@ class DatabaseManager:
                         try:
                             photo_data = self.process_image(filepath)
                             cursor.execute('''
-                                INSERT INTO photos (filename, date_taken, hour_taken, focal_length_in_35mm, aperture, shutter_speed, 
+                                INSERT INTO photos (filename, date_taken, hour_taken, iso, focal_length_in_35mm, aperture, shutter_speed, 
                                            brand_name, camera_model, gps_info, folder_path)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             ''', photo_data)
                             processed_count += 1
                         except Exception as e:
@@ -349,6 +362,12 @@ class DatabaseManager:
             cursor.execute("SELECT MAX(date_taken) FROM photos WHERE date_taken != 'Unknown'")
             latest_date = cursor.fetchone()[0] or "No valid date found"
 
+
+            cursor.execute("SELECT iso FROM photos WHERE iso IS NOT NULL")
+            isos = [row[0] for row in cursor.fetchall()]
+            avg_iso = mean(isos) if isos else 'N/A'
+            avg_iso = round(avg_iso, 2) if avg_iso != 'N/A' else 'N/A'
+
             cursor.execute("SELECT focal_length FROM photos WHERE focal_length IS NOT NULL")
             focal_lengths = [row[0] for row in cursor.fetchall()]
             avg_focal_length = mean(focal_lengths) if focal_lengths else 'N/A'
@@ -375,8 +394,32 @@ class DatabaseManager:
                 'total_images': total_images,
                 'earliest_date': earliest_date,
                 'latest_date': latest_date,
+                'avg_iso': avg_iso,
                 'avg_focal_length': avg_focal_length,
                 'avg_aperture': avg_aperture,
                 'avg_shutter_speed': avg_shutter_speed,
                 'inverse_avg_shutter_speed': inverse_avg_shutter_speed_fraction,
             }
+        
+
+    # Fonctions permettant d'installer les futurs filtres croisés d'affichage
+    def get_range(self, column_name):
+        """ Get the minimum and maximum values for a given column. """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"SELECT MIN({column_name}), MAX({column_name}) FROM photos")
+            return cursor.fetchone()
+
+    def get_date_range(self):
+        """ Get the minimum and maximum dates from the photos table. """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT MIN(date_taken), MAX(date_taken) FROM photos WHERE date_taken != 'Unknown'")
+            return cursor.fetchone()
+
+    def get_time_range(self):
+        """ Get the minimum and maximum times from the photos table. """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT MIN(hour_taken), MAX(hour_taken) FROM photos WHERE hour_taken != 'Unknown'")
+            return cursor.fetchone()
