@@ -1,0 +1,24 @@
+Exemple de structure de projet
+
+photo_analysis/
+├── app/
+│   ├── __init__.py
+│   ├── routes.py
+│   ├── models.py
+│   ├── utils.py
+│   └── templates/
+│       └── index.html
+├── data/
+│   └── photos.db
+├── scripts/
+│   ├── create_database.py
+│   └── extract_exif.py
+├── static/
+│   ├── css/
+│   ├── js/
+│   └── images/
+├── dash_app.py
+├── .gitignore
+├── config.py
+├── requirements.txt
+└── run.py
