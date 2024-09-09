@@ -6,7 +6,7 @@ def generate_uml():
     os.chdir(project_root)
 
     # Créer le répertoire 'uml' s'il n'existe pas
-    uml_dir = os.path.join(project_root,'..', 'uml')
+    uml_dir = os.path.join(project_root, 'uml')
     os.makedirs(uml_dir, exist_ok=True)
 
     # Supprimer les fichiers existants pour éviter les conflits
@@ -19,7 +19,7 @@ def generate_uml():
             os.remove(file_path)
 
     # Utiliser pyreverse pour analyser le projet et générer les fichiers Dot dans 'uml'
-    subprocess.run(["pyreverse", "-o", "dot", "-p","photo_analysis", "main", "scripts"])
+    subprocess.run(["pyreverse", "-o", "dot", "-p","photo_analysis", "app", "scripts"])
     os.rename("classes_photo_analysis.dot", os.path.join(uml_dir, "classes_photo_analysis.dot"))
     os.rename("packages_photo_analysis.dot", os.path.join(uml_dir, "packages_photo_analysis.dot"))
 
