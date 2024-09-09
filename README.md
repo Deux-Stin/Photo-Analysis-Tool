@@ -16,15 +16,19 @@ The Photos Analysis Tool is a Python-based application that allows users to visu
 
 1. Clone the repository:
     ```bash
-    git clone https://github.com/deux-stin/photos-analysis-tool.git
+    git clone https://github.com/deux-stin/photos-analysis-tool
     ```
 2. Navigate to the project directory:
     ```bash
-    cd photos-analysis-tool
+    cd Photo-Analysis-Tool
     ```
 3. Install the required dependencies:
     ```bash
     pip install -r requirements.txt
+    ```
+4. Add dependencies for exiftool. Need to be executed in a powershell window
+    ```
+    powershell -ExecutionPolicy Bypass -File ./exiftool_path_setup.ps1
     ```
 
 ## Usage

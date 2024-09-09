@@ -1,13 +1,12 @@
 import os
 import rawpy
-import time
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QSizePolicy, QScrollArea, QSpacerItem, QSizePolicy, QGridLayout, QComboBox
 )
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import QTimer
-from PIL import Image
 import pillow_heif
+from PIL import Image
 from io import BytesIO
 
 class ThumbnailViewWidget(QWidget):
