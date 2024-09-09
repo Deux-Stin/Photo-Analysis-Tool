@@ -1,5 +1,5 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QFileDialog, QPushButton, QTabWidget, QMessageBox, QTextEdit, QSpacerItem, QSizePolicy
+from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QFileDialog, QPushButton, QTabWidget, QMessageBox, QTextBrowser, QSizePolicy
 from PyQt5.QtGui import QIcon
 from scripts.data_visualizer import DataVisualizer
 from scripts.database_manager import DatabaseManager
@@ -13,6 +13,7 @@ import sqlite3
 import folium
 import re, os
 from PyQt5.QtCore import Qt
+import markdown
 
 class HomePage(QWidget):
     def __init__(self, parent):
@@ -23,10 +24,11 @@ class HomePage(QWidget):
     def init_ui(self):
         layout = QVBoxLayout()
 
-        # Création d'un QTextEdit pour afficher le contenu du README.md
-        self.readme_display = QTextEdit(self)
+        # Création d'un QTextBrowser pour afficher le contenu du README.md avec du HTML
+        self.readme_display = QTextBrowser(self)
         self.readme_display.setReadOnly(True)
-        self.readme_display.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)  # Permet au QTextEdit de s'étendre
+        self.readme_display.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)  # Permet au QTextBrowser de s'étendre
+
 
 
         # Chargement du contenu du README.md
@@ -75,7 +77,8 @@ class HomePage(QWidget):
         if os.path.exists(readme_path):
             with open(readme_path, 'r') as file:
                 content = file.read()
-                self.readme_display.setPlainText(content)
+                html_content = markdown.markdown(content)  # Convertir le markdown en HTML
+                self.readme_display.setHtml(html_content)  # Afficher le HTML dans QTextBrowser
         else:
             self.readme_display.setPlainText("README.md file not found.")
 

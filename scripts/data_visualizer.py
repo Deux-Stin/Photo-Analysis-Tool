@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (
     QVBoxLayout, QWidget, QComboBox, QLabel, QHBoxLayout, QCheckBox,
-    QSlider, QDateEdit, QGroupBox, QFormLayout, QSpacerItem, QSizePolicy
+    QSlider, QDateEdit, QGroupBox, QFormLayout
 )
 from PyQt5.QtCore import Qt, QDate
 import pyqtgraph as pg

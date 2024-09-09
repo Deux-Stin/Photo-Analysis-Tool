@@ -6,8 +6,8 @@ import exifread
 import json
 import subprocess
 from statistics import mean
-from PIL import Image, ExifTags
-import pillow_heif
+# from PIL import Image, ExifTags
+# import pillow_heif
 import re
 
 class DatabaseManager:

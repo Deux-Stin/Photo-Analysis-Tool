@@ -1,5 +1,5 @@
 import exifread
-from PIL import Image
+# from PIL import Image
 
 class ExifExtractor:
     @staticmethod
