@@ -3,14 +3,16 @@ from PyQt5.QtWidgets import (
     QSlider, QDateEdit, QGroupBox, QFormLayout
 )
 from PyQt5.QtCore import Qt, QDate
+from scripts.data_loader import DataLoader  
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 import pyqtgraph as pg
 import datetime
 import sqlite3
 import numpy as np
-from scripts.data_loader import DataLoader  
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+import matplotlib.dates as mdates
+import pandas as pd
 
 class RangeSlider(QWidget):
     def __init__(self, min_value, max_value, default_min, default_max, label, factor=1):
@@ -88,10 +90,17 @@ class DataVisualizer(QWidget):
         self.data_loader = DataLoader(db_path)
         self.param_ranges = self.data_loader.get_parameter_ranges()
 
+        # Charger toutes les données dans un dataframe avec pandas au démarrage
+        self.data = self.load_data_into_dataframe()
+
+        # Limiter les points à un maximum de 300 pour de meilleures performances
+        max_points = 300
+        if len(self.data) > max_points:
+            self.data = self.data.sample(n=max_points)  # Sélection aléatoire de 500 points
+
         self.init_ui()
         self.load_folders()
-        # self.load_data()
-        self.update_plot()
+        # self.update_plot()
 
     def init_ui(self):
         main_layout = QVBoxLayout()
@@ -179,6 +188,12 @@ class DataVisualizer(QWidget):
         )
         filters_layout.addRow("Focal Length:", self.focal_length_filter)
 
+        # Ajouter le turn_on des annotations sur les graph
+        self.annotation_checkbox = QCheckBox()
+        self.annotation_checkbox.setChecked(False)
+
+        filters_layout.addRow("Annotations on plot:", self.annotation_checkbox)
+
         self.filters_group.setLayout(filters_layout)
         left_layout.addWidget(self.filters_group)
 
@@ -245,10 +260,25 @@ class DataVisualizer(QWidget):
         for checkbox in self.brand_filters.values():
             checkbox.stateChanged.connect(self.update_plot)
 
+        # Ajout des annotations ou pas 
+        self.annotation_checkbox.stateChanged.connect(self.update_plot)
+
         self.setLayout(main_layout)
 
         # Appel initial pour afficher un graphique
         self.update_plot()
+
+    def load_data_into_dataframe(self):
+        """
+        Charge toutes les données de la base de données SQLite dans un DataFrame Pandas.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            query = """
+                SELECT date_taken, hour_taken, iso, focal_length_in_35mm, aperture, shutter_speed, folder_path, brand_name, camera_model, gps_info
+                FROM photos
+            """
+            data = pd.read_sql_query(query, conn)
+        return data
 
     def load_folders(self):
         data = self.data_loader.get_folders()
@@ -294,135 +324,127 @@ class DataVisualizer(QWidget):
         self.update_plot()
 
     def update_plot(self):
-        display_type = self.display_type.currentText()
-        y_axis_type = self.y_axis_type.currentText()
-        graph_type = self.graph_type.currentText()
+        # Récupérer les données du DataFrame
+        data = self.data.copy()
+
+        column_mapping = {
+            "Date Taken": "date_taken",
+            "Focal length in 35mm": "focal_length_in_35mm",
+            "Iso": "iso",
+            "Aperture": "aperture",
+            "Shutter Speed": "shutter_speed",
+            "Brand Name": "brand_name",
+            "Folder Path": "folder_path"  # Ajout pour le dossier
+        }
+
+        # Configuration du type d'affichage : histogramme, barres, ou scatter plot
+        x_axis = self.display_type.currentText()  # Exemple: 'date' ou 'aperture'
+        y_axis = self.y_axis_type.currentText()  # Exemple: 'iso', 'shutter_speed', etc.
+
+        # Trouver le nom original pour x_axis
+        x_axis = column_mapping.get(x_axis, 'Unknown Column')
+        y_axis = column_mapping.get(y_axis, 'Unknown Column')
+
+        graph_type = self.graph_type.currentText()  # Bar, scatter, etc.
         selected_folder = self.folder_filter.currentText()
         selected_brands = [brand for brand, checkbox in self.brand_filters.items() if checkbox.isChecked()]
 
         if not selected_brands or len(selected_brands) == len(self.brand_filters):
             selected_brands = list(self.brand_filters.keys())
 
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
+        # Appliquer les filtres de sliders (aperture, iso, shutter_speed, focal_length_in_35mm)
+        data = data[
+            (data['date_taken'] >= self.date_filter_from.date().toString("yyyy-MM-dd")) & (data['date_taken'] <= self.date_filter_to.date().toString("yyyy-MM-dd")) &
+            (data['aperture'] >= self.aperture_filter.slider_min.value() / self.aperture_filter.factor) &
+            (data['aperture'] <= self.aperture_filter.slider_max.value() / self.aperture_filter.factor) &
+            (data['iso'] >= self.iso_filter.slider_min.value()) &
+            (data['iso'] <= self.iso_filter.slider_max.value()) &
+            (data['shutter_speed'] <= 1/self.shutter_speed_filter.slider_min.value()) &
+            (data['shutter_speed'] >= 1/self.shutter_speed_filter.slider_max.value()) &
+            (data['focal_length_in_35mm'] >= self.focal_length_filter.slider_min.value()) &
+            (data['focal_length_in_35mm'] <= self.focal_length_filter.slider_max.value())
+        ]
 
-            column_mapping = {
-                "Date Taken": "date_taken",
-                "Focal length in 35mm": "focal_length_in_35mm",
-                "Iso": "iso",
-                "Aperture": "aperture",
-                "Shutter Speed": "shutter_speed",
-                "Brand Name": "brand_name"
-            }
+        # Filtrer par dossier si sélectionné
+        if selected_folder != "All":
+            data = data[data['folder_path'] == selected_folder]
 
-            if display_type not in column_mapping or y_axis_type not in column_mapping:
-                self.ax.clear()
-                self.canvas.draw()
-                return
+        # Filtrer par marque si sélectionnée
+        if selected_brands:
+            data = data[data['brand_name'].isin(selected_brands)]
 
-            x_column = column_mapping[display_type]
-            y_column = column_mapping[y_axis_type]
+        # Convertir la colonne 'date' en format datetime si elle est utilisée
+        if x_axis == 'date_taken':
+            data['date_taken'] = pd.to_datetime(data['date_taken'])
 
-            base_query = f"SELECT {x_column}, {y_column} FROM photos WHERE 1=1"
-            params = []
+        # Appliquez un format spécifique aux dates
+        self.ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+        self.ax.xaxis.set_major_locator(mdates.DayLocator(interval=1))  # Affiche chaque jour
 
-            if selected_folder != "All":
-                base_query += " AND folder_path = ?"
-                params.append(selected_folder)
+        # Dénombrement des photos
+        counts = len(data)
+        self.total_photos_label.setText(f"Total Photos: {counts}")
 
-            if selected_brands:
-                placeholders = ', '.join('?' for _ in selected_brands)
-                base_query += f" AND brand_name IN ({placeholders})"
-                params.extend(selected_brands)
+        # Nettoyer l'axe Y en cas de valeurs non valides (éviter les erreurs d'affichage)
+        # if y_axis not in data.columns or y_axis == x_axis:
+        #     print(f"Erreur : {y_axis} n'est pas une option valide pour l'axe Y.")
+        #     return
 
-            min_date = self.date_filter_from.date().toString("yyyy-MM-dd")
-            max_date = self.date_filter_to.date().toString("yyyy-MM-dd") + " 23:59:59"
-            base_query += " AND date_taken BETWEEN ? AND ?"
-            params.extend([min_date, max_date])
+        # Récupérer l'état du bouton "On/Off" pour les annotations
+        annotations_enabled = self.annotation_checkbox.isChecked()
 
-            min_aperture = self.aperture_filter.slider_min.value() / self.factor
-            max_aperture = self.aperture_filter.slider_max.value() / self.factor
-            base_query += " AND aperture >= ? AND aperture <= ?"
-            params.extend([min_aperture, max_aperture])
+        # Trier les données en fonction de l'axe x
+        data = data.sort_values(by=x_axis)
 
-            min_iso = self.iso_filter.slider_min.value()
-            max_iso = self.iso_filter.slider_max.value()
-            base_query += " AND iso BETWEEN ? AND ?"
-            params.extend([min_iso, max_iso])
+        self.ax.clear()  # Effacer l'axe avant de redessiner
 
-            min_shutter_speed = 1 / self.shutter_speed_filter.slider_max.value()
-            max_shutter_speed = 1 / self.shutter_speed_filter.slider_min.value()
-            base_query += " AND shutter_speed BETWEEN ? AND ?"
-            params.extend([min_shutter_speed, max_shutter_speed])
+        # Graphique en fonction du type sélectionné
+        if graph_type == 'Bar Graph':
+            grouped_data = data.groupby(x_axis)[y_axis].count()  # Grouper par X et compter Y
+            # self.ax.bar(grouped_data.index, grouped_data.values)
+            bars = self.ax.bar(data[x_axis],data[y_axis])
 
-            min_focal_length = self.focal_length_filter.slider_min.value()
-            max_focal_length = self.focal_length_filter.slider_max.value()
-            base_query += " AND focal_length_in_35mm BETWEEN ? AND ?"
-            params.extend([min_focal_length, max_focal_length])
+            if annotations_enabled:
+                # Ajouter les valeurs au-dessus de chaque barre
+                for bar in bars:
+                    height = bar.get_height()
+                    self.ax.annotate(f'{height}',  # Le texte à afficher
+                                xy=(bar.get_x() + bar.get_width() / 2, height),  # Position de l'annotation
+                                xytext=(0, 3),  # Légère décalage par rapport à la position (pour éviter l'écrasement)
+                                textcoords="offset points",
+                                ha='center', va='bottom')  # Centrer horizontalement et positionner en bas
 
-            base_query += f" ORDER BY {x_column}, {y_column}"
-            cursor.execute(base_query, params)
-            data = cursor.fetchall()
 
-            if not data:
-                self.ax.clear()
-                self.ax.text(0.5, 0.5, 'No Data Available', horizontalalignment='center', verticalalignment='center')
-                self.canvas.draw()
-                return
+        elif graph_type == 'Scatter Plot':
+            self.ax.scatter(data[x_axis], data[y_axis])    
 
-            x_values = []
-            y_values = []
-            x_ticks = []
+            if annotations_enabled:    
+                # Ajouter des annotations à chaque point
+                for i in range(len(data)):
+                    self.ax.annotate(f'{data[y_axis].iloc[i]}',  # Texte à afficher (les valeurs de y)
+                                    (data[x_axis].iloc[i], data[y_axis].iloc[i]),  # Position du point
+                                    textcoords="offset points", xytext=(0, 5), ha='center')
+                
+        elif graph_type == 'Line Graph':
+            self.ax.plot(data[x_axis], data[y_axis])
 
-            counts = len(data)
-            self.total_photos_label.setText(f"Total Photos: {counts}")
+            if annotations_enabled:
+                for i, txt in enumerate(data[y_axis]):
+                    self.ax.annotate(f'{txt}', (data[x_axis].iloc[i], data[y_axis].iloc[i]), 
+                                     textcoords="offset points", xytext=(0, 5), ha='center')
 
-            if display_type == "Date Taken":
-                for i, (x_value, y_value) in enumerate(data):
-                    try:
-                        date = datetime.datetime.strptime(x_value, "%Y-%m-%d").date()
-                        x_values.append(date)
-                        y_values.append(y_value)
-                        x_ticks.append(date.strftime('%Y-%m-%d'))
-                    except ValueError:
-                        print(f"Invalid date format: {x_value}")
-                        continue
-            elif display_type == "Brand Name":
-                unique_x_values = {v[0] for v in data}
-                x_mapping = {val: i for i, val in enumerate(unique_x_values)}
-                for x_value, y_value in data:
-                    x_values.append(x_mapping[x_value])
-                    y_values.append(y_value)
-                    x_ticks.append(x_value)
-            else:
-                for x_value, y_value in data:
-                    x_values.append(float(x_value))
-                    y_values.append(y_value)
+        # Afficher les étiquettes sur l'axe X et Y
+        self.ax.set_xlabel(self.display_type.currentText())
+        self.ax.set_ylabel(self.y_axis_type.currentText())
 
-            self.ax.clear()  # Clear the previous plot
+        # Rotation des labels de l'axe des X si 'date_taken' est utilisé
+        if x_axis == 'date_taken':
+            self.ax.xaxis.set_tick_params(rotation=45)
+        else:
+            self.ax.xaxis.set_tick_params(rotation=0)
 
-            if graph_type == "Scatter Plot":
-                self.ax.scatter(x_values, y_values, color='red')
-            elif graph_type == "Bar Graph":
-                self.ax.bar(x_values, y_values, color='blue')
-            elif graph_type == "Line Graph":
-                self.ax.plot(x_values, y_values, marker='o', color='blue')
+        # Ajustement automatique du layout pour que tout le contenu soit visible
+        self.figure.tight_layout()  # Cette ligne permet d'ajuster automatiquement les marges
 
-            # Rotation des labels de l'axe X si c'est une date
-            if display_type == "Date Taken":
-                self.ax.set_xticks(x_values)
-                self.ax.set_xticklabels(x_ticks, rotation=90)
-
-            self.ax.set_xlabel(display_type)
-            self.ax.set_ylabel(y_axis_type)
-            self.figure.tight_layout()
-            self.canvas.draw()  # Redessiner le canvas
-
-            
-    def add_hover_values(self, x_values, y_values):
-        # Réinitialiser les éléments de texte
-        for i, (x, y) in enumerate(zip(x_values, y_values)):
-            text = pg.TextItem(f"{y}", anchor=(0.5, 1), color='k')
-            # Placer le texte directement sur les valeurs réelles de x et y
-            text.setPos(x, y)
-            self.plot_widget.addItem(text)
+        # Mettre à jour l'affichage
+        self.canvas.draw()
